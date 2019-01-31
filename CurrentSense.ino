@@ -13,9 +13,16 @@
 #include <LiquidCrystal.h>
 LiquidCrystal lcd(48, 49, 50, 51, 52, 53); //48 is RS   49 is E .   50 is DB4 - 53 is DB7
 
-const int EnablePin = 8;
+//const int EnablePin = 8;
 const int PWMPinAMotor1 = 3;
-const int PWMPinBMotor1 = 11; // pins for Megamoto
+const int PWMPinBMotor1 = 11; // Motor 2 jumper pins Megamoto
+const int PWMPinAMotor2 = 10;  //Motor 2 jumper pins Megamoto
+const int PWMPinBMotor2 = 9; 
+
+const int currentSensorActuator1 = A1;  // motor feedback
+const int currentSensorActuator2 = A0;  // motor feedback
+
+
 const int startButton = 4;
 const int topButton = 30;
 const int bottomButton = 31;
@@ -26,8 +33,6 @@ const int drill3 = 24;
 const int drill4 = 25;
 bool drillsOnState = false;
 
-
-const int currentSensorActuator1 = A0;  // motor feedback
 
 
 int hitLimits = 0;
@@ -44,8 +49,11 @@ int debounceTime = 300; //amount to debounce
 long lastButtonpress = 0; // timer for debouncing
 long currentTimedebounce = 0;
 
-int CRaw = 0;      // raw A/D value
+int CRawMotor1 = 0;      // raw analog input value
+int CRawMotor2 = 0;      
 
+int Current1BaseValue = 0; // allows you to calibrate current sensor
+int countCurrentBase = 0;
 int maxAmps = 0; // trip limit
 
 //bool dontExtend = false;
@@ -59,6 +67,14 @@ void setup()
 {
   Serial.begin(9600);
 
+ //pinMode(EnablePin, OUTPUT);
+  pinMode(PWMPinAMotor1, OUTPUT);
+  pinMode(PWMPinBMotor1, OUTPUT);//Set motor outputs
+  pinMode(PWMPinAMotor2, OUTPUT);
+  pinMode(PWMPinBMotor2, OUTPUT);//Set motor outputs
+  pinMode(currentSensorActuator1, INPUT);//set feedback input
+  pinMode(currentSensorActuator2, INPUT);//set feedback input
+
   pinMode(drill1, OUTPUT);
   pinMode(drill2, OUTPUT);
   pinMode(drill3, OUTPUT);
@@ -68,10 +84,6 @@ void setup()
   digitalWrite(drill3, LOW);
   digitalWrite(drill4, LOW);
 
-
-  pinMode(EnablePin, OUTPUT);
-  pinMode(PWMPinAMotor1, OUTPUT);
-  pinMode(PWMPinBMotor1, OUTPUT);//Set motor outputs
 
   pinMode(startButton, INPUT);
   pinMode(bottomButton, INPUT);
@@ -84,7 +96,6 @@ void setup()
 
   lcd.begin(16, 2); // initalize and set dimensions of lcd.
 
-  pinMode(currentSensorActuator1, INPUT);//set feedback input
 
   currentTimedebounce = millis();
   currentTimefeedback = 0;//Set initial times
@@ -95,6 +106,19 @@ void setup()
 
 void loop()
 {
+  // countCurrentBase++;
+  // if (countCurrentBase >= 5){
+  //   countCurrentBase = 0;
+  // }
+
+  // current1Array[countCurrentBase] = analogRead(currentSensorActuator1);
+  // int currentTemp = 0;
+  // for (int i = 0; i <= 4; i++ ){
+  //   currentTemp += current1Array[i];
+  
+  // }
+  //  Current1BaseValue = (currentTemp/5);
+  printLcd("Loop WFI");//loop wait for input
   if (digitalRead(startButton) == LOW) // if someone presses start button.
   {
     Serial.println("start pressed");
@@ -134,7 +158,7 @@ void drillFoam()
       startDrill(drillsStarted + 1);
       drillsStarted++;
     }
-    CRaw = analogRead(currentSensorActuator1);
+    //CRawMotor1 = analogRead(currentSensorActuator1);
 
     printLcd("Move Out");
 
@@ -167,23 +191,38 @@ void drillFoam()
 
 void printLcd(String funcName)
 {
+  CRawMotor1 = analogRead(currentSensorActuator1);
+  CRawMotor2 = analogRead(currentSensorActuator2);
+  //float analogMotor1Calibrated = CRawMotor1 - Current1BaseValue;
+  float analogMotor1Calibrated = CRawMotor1 - 175;
+  float analogMotor2Calibrated = CRawMotor2 - 175;
+  float precision = 3.3/4096;
+  float voltPerAmp = .0375;
+
+  float currentMotor1Actual = ((analogMotor1Calibrated * precision) / voltPerAmp);
+  float currentMotor2Actual = ((analogMotor2Calibrated * precision) / voltPerAmp);
   //Serial.println("funcName");
   printDelayB = millis();
-  if (printDelayB - printDelayA > 400) {
+  if (printDelayB - printDelayA > 500) { // delay is used so board doesnt refresh too fast
     printDelayA = millis();
 
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print(funcName);
     lcd.setCursor(0, 1);
-    lcd.print("current = " );
-    lcd.setCursor(10, 1);
-    lcd.print(CRaw);
+    lcd.print("A=" );
+    lcd.setCursor(3, 1);
+    lcd.print(currentMotor1Actual);
+    lcd.setCursor(9, 1);
+    lcd.print("A=" );
+    lcd.setCursor(11, 1);
+    lcd.print(currentMotor2Actual);
   }
 }
 
 void motorDown()
 {
+  //write a smooth runup script
   // monitor current return bool true == error
   //monitor safety return bool true == error
   // monitor sync
@@ -192,6 +231,8 @@ void motorDown()
   //digitalWrite(EnablePin, HIGH);
   analogWrite(PWMPinAMotor1, 255);
   analogWrite(PWMPinBMotor1, 0);//move motor
+  analogWrite(PWMPinAMotor2, 255);
+  analogWrite(PWMPinBMotor2, 0);//move motor
   //if (firstRun == true) delay(firstfeedbacktimedelay);
   //else delay(feedbacktimedelay); //small delay to get to speed
   if (digitalRead(bottomButton) == LOW) {
@@ -207,8 +248,11 @@ void motorDown()
 
 void motorUp ()//could be simplified
 {
+  //write a smooth runup script
   analogWrite(PWMPinAMotor1, 0);
   analogWrite(PWMPinBMotor1, 255);//move motor
+  analogWrite(PWMPinAMotor2, 0);
+  analogWrite(PWMPinBMotor2, 255);//move motor
 
   getFeedback();
   //monitor limit return bool true == limit == 0 10x
@@ -222,6 +266,8 @@ void motorStop()
 {
   analogWrite(PWMPinAMotor1, 0);
   analogWrite(PWMPinBMotor1, 0);
+  analogWrite(PWMPinAMotor2, 0);
+  analogWrite(PWMPinBMotor2, 0);
 
   //digitalWrite(EnablePin, LOW);
   firstRun = true;//once the motor has stopped, reenable firstRun to account for startup current spikes
@@ -257,10 +303,11 @@ void stopDrill() {
 }
 void getFeedback()
 {
-  CRaw = analogRead(currentSensorActuator1);
-  Serial.println(CRaw);
+  CRawMotor1 = analogRead(currentSensorActuator1);
+  Serial.println(CRawMotor1);
+  //.075/2 amps per volt
 
-  /* if (CRaw == 0 && hitLimits < hitLimitsmax) hitLimits = hitLimits + 1;
+  /* if (CRawMotor1 == 0 && hitLimits < hitLimitsmax) hitLimits = hitLimits + 1;
     else hitLimits = 0; // check to see if the motor is at the limits and the current has stopped
 
     if (hitLimits == hitLimitsmax && rightlatch == HIGH)
@@ -277,7 +324,7 @@ void getFeedback()
     Serial.println("all the way front");
     }//end if
 
-    if (CRaw > maxAmps)
+    if (CRawMotor1 > maxAmps)
     {
     dontExtend = true;
     leftlatch = LOW; //stop if feedback is over maximum
