@@ -13,7 +13,7 @@
 // #include <LiquidCrystal.h>
 #include <LiquidCrystal_I2C.h>
 
-LiquidCrystal_I2C lcd(0x27,20,4);
+LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 // LiquidCrystal lcd(48, 49, 50, 51, 52, 53); //48 is RS   49 is E .   50 is DB4 - 53 is DB7
 
@@ -25,11 +25,20 @@ const int PWMPinBMotor2 = 9;
 
 const int currentSensorActuator1 = A1; // motor feedback
 const int currentSensorActuator2 = A0; // motor feedback
+float ampOutM1;
+float ampOutM2;
+int maxAmps = 1.3; // trips at
+bool jamState = false;
 
 const int startButton = 4;
-const int topButton = 30;
-const int bottomButton = 31;
+const int topSwitch = 30;
+const int bottomSwitch = 31;
 const int pinchSwitch = 32;
+
+bool topState = false;
+bool bottomState = false;
+bool pinchState = false;
+bool safetyState = false;
 
 const int drill1 = 22;
 const int drill2 = 23;
@@ -39,8 +48,6 @@ bool drillsOnState = false;
 
 int hitLimits = 0;
 int hitLimitsmax = 10; //values to know if travel limits were reached
-bool topLimit = true;
-bool bottomLimit = false;
 
 long lastfeedbacktime = 0;
 int firstfeedbacktimedelay = 750; //first delay to ignore current spike
@@ -56,12 +63,10 @@ int CRawMotor2 = 0;
 
 int Current1BaseValue = 0; // allows you to calibrate current sensor
 int countCurrentBase = 0;
-int maxAmps = 0; // trip limit
 
 //bool dontExtend = false;
 bool firstRun = true;
 bool fullyRetracted = false; //program logic
-bool safetyState = true;
 
 long printDelayA = millis();
 long printDelayB = millis();
@@ -88,18 +93,18 @@ void setup()
   digitalWrite(drill4, LOW);
 
   pinMode(startButton, INPUT);
-  pinMode(bottomButton, INPUT);
-  pinMode(topButton, INPUT);
+  pinMode(bottomSwitch, INPUT);
+  pinMode(topSwitch, INPUT);
   pinMode(pinchSwitch, INPUT);
 
   digitalWrite(startButton, HIGH); // enable internal pullups
-  digitalWrite(bottomButton, HIGH);
-  digitalWrite(topButton, HIGH);
+  digitalWrite(bottomSwitch, HIGH);
+  digitalWrite(topSwitch, HIGH);
   digitalWrite(pinchSwitch, HIGH);
   analogReadResolution(12);
 
   // lcd.begin(16, 2); // initalize and set dimensions of lcd.
-  lcd.init();                      // initialize the lcd 
+  lcd.init(); // initialize the lcd
   // Print a message to the LCD.
   lcd.backlight();
 
@@ -115,47 +120,33 @@ void loop()
   // while (true){
   //   motorIn();
   // }
-  checkSafetySwitches();
-  if (safetyState)
+  printLcd("begin");
+  readInputs();
+  if (pinchState)
   {
-    // lcdPrintError("Checking Safety");
-    checkSafetySwitches();
+    //do not start anything
+    // display which switches are holding it up
   }
   else
   {
-    printLcd("Loop WFI");                //loop wait for input
+    printLcd("Ready");                   //loop wait for input
     if (digitalRead(startButton) == LOW) // if someone presses start button.
     {
-      Serial.println("start pressed");
-      if (digitalRead(topButton) == LOW){
-        topLimit = true;
-      }
-      if (!topLimit) // check if in home position. If not home return to home.
+      // Serial.println("start pressed");
+      if (!topState) // check if in home position. If not home return to home.
       {
-        while (!topLimit)
+        motorOut();
+        while (!topState)
         {
           printLcd("Return Home");
-          motorOut();
-          if (digitalRead(topButton) == LOW)
-          {
-            topLimit = true;
-          }
+          readInputs();
         }
         motorStop();
       }    // end if
       else // everything is ready start drilling.
       {
-        if (checkSafetySwitches())
-        {
-          //check our pinch and doors
-          //check for faulty amp reading
-        }
-        else
-        {
-          drillFoam(); //runs standard opperation
-        }
-
-      } // end else
+        drillFoam(); //runs standard opperation
+      }              // end else
 
     } // end if start is pressed
   }
@@ -166,73 +157,57 @@ void drillFoam()
   // start normal foam drill cycle
 
   // turn on drills
-  topLimit = false;
   int drillsStarted = 0;
   int drillStartTime = millis();
-  while (!bottomLimit) //while down
+  motorIn();
+  while (!bottomState) //while down
   {
-
+    //start drills 1 at a time
     if (drillsStarted < 4 && millis() > (drillStartTime + 250 * drillsStarted))
     {
       startDrill(drillsStarted + 1);
       drillsStarted++;
     }
-    //CRawMotor1 = analogRead(currentSensorActuator1);
-    if (checkSafetySwitches())
+
+    readInputs();
+    if (pinchState)
     {
       //check our pinch and doors
       //check for faulty amp reading
-      return;
+      stopDrill();
+      motorOut();
+      delay(1000);
+      motorStop();
+      return; // exit down program
     }
     printLcd("Move In");
-
-    motorIn();
   }
 
-printLcd("Bottom");
-  bottomLimit = false; // its here because it has reached bottom switch. now we can switch the state because we are about to call move up
-  drillStartTime = millis();
-  stopDrill();
-  while (!topLimit)
+  drillStartTime = millis(); // used to set the timer used to count down till drills turn off
+                             // stopDrill();
+
+  motorOut();
+  while (!topState)
   {
     printLcd("Move Out");
-    if (drillsOnState && millis() > (1000 + drillStartTime))
+    readInputs();
+    if (drillsOnState && millis() > (1000 + drillStartTime)) //turn drills off after 1 second delay
     {
       stopDrill();
     }
-    if (checkSafetySwitches())
-    {
-      //check our pinch and doors
-      //check for faulty amp reading
-      return;
-    }
-    //turn drills off after 1 second delay
-    
-
-    motorOut();
-    // move motor up
+    // if (checkSafetySwitches())
+    // {
+    //   //check our pinch and doors
+    //   //check for faulty amp reading
+    //   return;
+    // }
   }
-
   motorStop();
-  topLimit = true;
-  //turn drills off?
-  //monitor limit
-  //exitdrill foam set up all variables.
-
 } //end cutFoam
 
 void printLcd(String funcName)
 {
-  CRawMotor1 = analogRead(currentSensorActuator1);
-  CRawMotor2 = analogRead(currentSensorActuator2);
-  //float analogMotor1Calibrated = CRawMotor1 - Current1BaseValue;
-  float analogMotor1Calibrated = CRawMotor1 - 175;
-  float analogMotor2Calibrated = CRawMotor2 - 175;
-  float precision = 3.3 / 4096;
-  float voltPerAmp = .0375;
 
-  float currentMotor1Actual = ((analogMotor1Calibrated * precision) / voltPerAmp);
-  float currentMotor2Actual = ((analogMotor2Calibrated * precision) / voltPerAmp);
   //Serial.println("funcName");
   printDelayB = millis();
   if (printDelayB - printDelayA > 500)
@@ -245,12 +220,32 @@ void printLcd(String funcName)
     lcd.setCursor(0, 1);
     lcd.print("A=");
     lcd.setCursor(2, 1);
-    lcd.print(currentMotor1Actual);
+    lcd.print(ampOutM1);
     lcd.setCursor(8, 1);
     lcd.print("A=");
     lcd.setCursor(10, 1);
-    lcd.print(currentMotor2Actual);
+    lcd.print(ampOutM2);
+    lcd.setCursor(0, 2);
+    lcd.print("T=");
+    lcd.setCursor(2, 2);
+    lcd.print(stateConverter(topState));
+    lcd.setCursor(5, 2);
+    lcd.print("B=");
+    lcd.setCursor(7, 2);
+    lcd.print(stateConverter(bottomState));
+    lcd.setCursor(10, 2);
+    lcd.print("P=");
+    lcd.setCursor(12, 2);
+    lcd.print(stateConverter(pinchState));
   }
+}
+
+int stateConverter(bool state)
+{
+  if (state)
+    return 1;
+  else
+    return 0;
 }
 
 void lcdPrintError(String error)
@@ -267,58 +262,68 @@ void lcdPrintError(String error)
   }
 }
 
-bool checkSafetySwitches()
+// bool checkSafetySwitches()
+// {
+//   int pinchState = digitalRead(pinchSwitch);
+//   if (pinchState == LOW)
+//   {
+//     safetyState = true;
+//     motorStop();
+//     stopDrill();
+//     lcdPrintError("Pinch");
+//     return true;
+//   }
+//   else
+//     safetyState = false;
+//   return false;
+// }
+
+void readInputs()
 {
-  int pinchState = digitalRead(pinchSwitch);
-  if (pinchState == LOW)
-  {
-    safetyState = true;
-    motorStop();
-    stopDrill();
-    lcdPrintError("Pinch");
-    return true;
-  }
+  if (digitalRead(topSwitch))
+    topState = false;
   else
-    safetyState = false;
-  return false;
+    topState = true;
+  if (digitalRead(bottomSwitch))
+    bottomState = false;
+  else
+    bottomState = true;
+  if (digitalRead(pinchSwitch))
+    pinchState = false;
+  else
+    pinchState = true;
+
+  CRawMotor1 = analogRead(currentSensorActuator1);
+  CRawMotor2 = analogRead(currentSensorActuator2);
+  //float analogMotor1Calibrated = CRawMotor1 - Current1BaseValue;
+  float analogMotor1Calibrated = CRawMotor1 - 175;
+  float analogMotor2Calibrated = CRawMotor2 - 175;
+  float precision = 3.3 / 4096;
+  float voltPerAmp = .0375;
+
+  ampOutM1 = ((analogMotor1Calibrated * precision) / voltPerAmp);
+  ampOutM2 = ((analogMotor2Calibrated * precision) / voltPerAmp);
+  if (ampOutM1 > maxAmps|| ampOutM2 > maxAmps){
+    jamState = true;
+  }
 }
+// const int startButton = 4;
+// const int topSwitch = 30;
+// const int bottomSwitch = 31;
+// const int pinchSwitch = 32;
+
+// bool topState = true;
+// bool bottomState = false;
+// bool safetyState = true;
 
 void motorOut()
 {
   //write a smooth runup script
-  // monitor current return bool true == error
-  //monitor safety return bool true == error
   // monitor sync
-  //monitor limit return bool true == limit == 0 10x
-  // Serial.println("Moving forwards");
-  //digitalWrite(EnablePin, HIGH);
   analogWrite(PWMPinAMotor1, 255);
   analogWrite(PWMPinBMotor1, 0); //move motor
   analogWrite(PWMPinAMotor2, 255);
   analogWrite(PWMPinBMotor2, 0); //move motor
-                                 //if (firstRun == true) delay(firstfeedbacktimedelay);
-                                 //else delay(feedbacktimedelay); //small delay to get to speed
-  if (digitalRead(topButton) == LOW)
-  {
-    //long debounce = millis();
-    int i = 0;
-    while (true)
-    {
-      delay(10);
-      if (digitalRead(topButton) == LOW)
-      {
-        i++;
-        if (i >= 5)
-        {
-          topLimit = true;
-        }
-      }
-      else
-      {
-        break;
-      }
-    }
-  }
 
   getFeedback();
 
@@ -335,32 +340,6 @@ void motorIn() //could be simplified
   analogWrite(PWMPinBMotor2, 255); //move motor
 
   getFeedback();
-  //monitor limit return bool true == limit == 0 10x
-  if (digitalRead(bottomButton) == LOW)
-  {
-    bottomLimit = true;
-  }
-  // if (digitalRead(bottomButton) == LOW)
-  // {
-  //   int i = 0;
-  //
-  // while (true)
-  // {
-  //   delay(10);
-  //   if (digitalRead(bottomButton) == LOW)
-  //   {
-  //     i++;
-  //     if (i >= 5)
-  //     {
-  //       bottomLimit = true;
-  //     }
-  //   }
-  //   else
-  //   {
-  //     break;
-  //   }
-  // }
-  // }
 
 } //end motorBack
 
