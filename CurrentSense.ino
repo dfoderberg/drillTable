@@ -10,8 +10,12 @@
   - Arduino Uno
   - 2 pushbuttons
 */
-#include <LiquidCrystal.h>
-LiquidCrystal lcd(48, 49, 50, 51, 52, 53); //48 is RS   49 is E .   50 is DB4 - 53 is DB7
+// #include <LiquidCrystal.h>
+#include <LiquidCrystal_I2C.h>
+
+LiquidCrystal_I2C lcd(0x27,20,4);
+
+// LiquidCrystal lcd(48, 49, 50, 51, 52, 53); //48 is RS   49 is E .   50 is DB4 - 53 is DB7
 
 //const int EnablePin = 8;
 const int PWMPinAMotor1 = 3;
@@ -35,7 +39,7 @@ bool drillsOnState = false;
 
 int hitLimits = 0;
 int hitLimitsmax = 10; //values to know if travel limits were reached
-bool topLimit = false;
+bool topLimit = true;
 bool bottomLimit = false;
 
 long lastfeedbacktime = 0;
@@ -94,7 +98,10 @@ void setup()
   digitalWrite(pinchSwitch, HIGH);
   analogReadResolution(12);
 
-  lcd.begin(16, 2); // initalize and set dimensions of lcd.
+  // lcd.begin(16, 2); // initalize and set dimensions of lcd.
+  lcd.init();                      // initialize the lcd 
+  // Print a message to the LCD.
+  lcd.backlight();
 
   currentTimedebounce = millis();
   currentTimefeedback = 0; //Set initial times
@@ -105,6 +112,10 @@ void setup()
 
 void loop()
 {
+  // while (true){
+  //   motorIn();
+  // }
+  checkSafetySwitches();
   if (safetyState)
   {
     // lcdPrintError("Checking Safety");
@@ -116,6 +127,9 @@ void loop()
     if (digitalRead(startButton) == LOW) // if someone presses start button.
     {
       Serial.println("start pressed");
+      if (digitalRead(topButton) == LOW){
+        topLimit = true;
+      }
       if (!topLimit) // check if in home position. If not home return to home.
       {
         while (!topLimit)
@@ -175,11 +189,13 @@ void drillFoam()
     motorIn();
   }
 
+printLcd("Bottom");
   bottomLimit = false; // its here because it has reached bottom switch. now we can switch the state because we are about to call move up
   drillStartTime = millis();
   stopDrill();
   while (!topLimit)
   {
+    printLcd("Move Out");
     if (drillsOnState && millis() > (1000 + drillStartTime))
     {
       stopDrill();
@@ -191,7 +207,7 @@ void drillFoam()
       return;
     }
     //turn drills off after 1 second delay
-    printLcd("Move Out");
+    
 
     motorOut();
     // move motor up
@@ -228,11 +244,11 @@ void printLcd(String funcName)
     lcd.print(funcName);
     lcd.setCursor(0, 1);
     lcd.print("A=");
-    lcd.setCursor(3, 1);
+    lcd.setCursor(2, 1);
     lcd.print(currentMotor1Actual);
-    lcd.setCursor(9, 1);
+    lcd.setCursor(8, 1);
     lcd.print("A=");
-    lcd.setCursor(11, 1);
+    lcd.setCursor(10, 1);
     lcd.print(currentMotor2Actual);
   }
 }
