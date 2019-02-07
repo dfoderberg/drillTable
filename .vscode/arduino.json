@@ -1,5 +1,5 @@
 {
     "board": "arduino:sam:arduino_due_x_dbg",
     "sketch": "CurrentSense.ino",
-    "port": "/dev/cu.usbmodem14311"
+    "port": "/dev/cu.usbmodem14111"
 }
