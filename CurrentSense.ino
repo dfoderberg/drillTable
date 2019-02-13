@@ -22,22 +22,21 @@ const int PWMPinBMotor1 = 11; // Motor 2 jumper pins Megamoto
 const int PWMPinAMotor2 = 10; //Motor 2 jumper pins Megamoto
 const int PWMPinBMotor2 = 9;
 
-const int currentSensorActuator1 = A1; // motor feedback
-const int currentSensorActuator2 = A0; // motor feedback
-float ampOutM1;
-float ampOutM2;
-float maxAmps = 200; // trips at
-float maxOutputedAmps = 1;
-long directionChangeTimer = 0;
-bool jamState = false;
+// const int currentSensorActuator1 = A1; // motor feedback
+// const int currentSensorActuator2 = A0; // motor feedback
+// float ampOutM1;
+// float ampOutM2;
+// float maxAmps = 200; // trips at
+// float maxOutputedAmps = 1;
+// long directionChangeTimer = 0;
 String motorDirection = "none";
 
-volatile int positionMotor1 = 0; //if the interrupt will change this value, it must be volatile
-float motor1Speed = 0;
-float smoothedMotor1Speed = 0;
-int previousPositionM1 = 0;
-int previousTime = 0;
-const int interuptM1 = 35;
+// volatile int positionMotor1 = 0; //if the interrupt will change this value, it must be volatile
+// float motor1Speed = 0;
+// float smoothedMotor1Speed = 0;
+// int previousPositionM1 = 0;
+// int previousTime = 0;
+// const int interuptM1 = 35;
 
 volatile int speedSwitch = 41;
 const int startButton = 4;
@@ -50,6 +49,7 @@ bool topState = false;
 bool bottomState = false;
 bool pinchState = false;
 bool safetyState = false;
+bool jamState = false;
 
 const int drill1 = 22;
 const int drill2 = 23;
@@ -102,13 +102,13 @@ void setup()
   pinMode(PWMPinAMotor1, OUTPUT);
   pinMode(PWMPinBMotor1, OUTPUT); //Set motor outputs
   pinMode(PWMPinAMotor2, OUTPUT);
-  pinMode(PWMPinBMotor2, OUTPUT);         //Set motor outputs
-  pinMode(currentSensorActuator1, INPUT); //set feedback input
-  pinMode(currentSensorActuator2, INPUT); //set feedback input
+  pinMode(PWMPinBMotor2, OUTPUT); //Set motor outputs
+  // pinMode(currentSensorActuator1, INPUT); //set feedback input
+  // pinMode(currentSensorActuator2, INPUT); //set feedback input
 
-  pinMode(interuptM1, INPUT);
-  digitalWrite(interuptM1, LOW);                                         //enable internal pullup resistor
-  attachInterrupt(digitalPinToInterrupt(interuptM1), ISRMotor1, RISING); //Interrupt initialization
+  // pinMode(interuptM1, INPUT);
+  // digitalWrite(interuptM1, LOW);                                         //enable internal pullup resistor
+  // attachInterrupt(digitalPinToInterrupt(interuptM1), ISRMotor1, RISING); //Interrupt initialization
 
   pinMode(drill1, OUTPUT);
   pinMode(drill2, OUTPUT);
@@ -165,7 +165,7 @@ void loop()
       }
     }
     jamState = false;
-    maxOutputedAmps = 1;
+    // maxOutputedAmps = 1;
   }
 
   printLcd("begin");
@@ -228,6 +228,7 @@ void drillFoam()
     printLcd("Transition"); // tell user we are in transistion phase
     readInputs();           // check switch presses
     checkRX();              // check communications with HS board to see if motors have both stopped
+    //create a function to see if both motors stop. use this function in stopMotor as well
   }
   jamState = false; // jam likely triggered during transistion. ignore this jam message
 
@@ -302,6 +303,8 @@ void printLcd(String funcName)
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print(funcName);
+    lcd.setCursor(15, 0);
+    lcd.print(speedSetting);
     lcd.setCursor(0, 1);
     lcd.print("TX #");
     lcd.setCursor(5, 1);
@@ -338,15 +341,14 @@ void printLcd(String funcName)
     lcd.print("J=");
     lcd.setCursor(17, 2);
     lcd.print(stateConverter(jamState));
-    lcd.setCursor(0, 3);
-    lcd.print("HS#=");
-    lcd.setCursor(4, 3);
-    lcd.print(positionMotor1);
-    lcd.setCursor(12, 3);
-    // lcd.print((positionMotor1 - previousPositionM1));
-    lcd.print(smoothedMotor1Speed);
-    lcd.setCursor(15, 0);
-    lcd.print(speedSetting);
+    // lcd.setCursor(0, 3);
+    // lcd.print("HS#=");
+    // lcd.setCursor(4, 3);
+    // lcd.print(positionMotor1);
+    // lcd.setCursor(12, 3);
+    // // lcd.print((positionMotor1 - previousPositionM1));
+    // lcd.print(smoothedMotor1Speed);
+
     // lcd.setCursor(0, 3);
     // lcd.print("Max amps=");
     // lcd.setCursor(10, 3);
@@ -360,20 +362,6 @@ int stateConverter(bool state)
     return 1;
   else
     return 0;
-}
-
-void lcdPrintError(String error)
-{
-  printDelayB = millis();
-  if (printDelayB - printDelayA > 500)
-  { // delay is used so board doesnt refresh too fast
-    printDelayA = millis();
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print(error);
-    // lcd.setCursor(0, 1);
-    // lcd.print("A=" );
-  }
 }
 
 void readInputs()
@@ -407,31 +395,31 @@ void readInputs()
     }
   }
 
-  CRawMotor1 = analogRead(currentSensorActuator1);
-  CRawMotor2 = analogRead(currentSensorActuator2);
+  // CRawMotor1 = analogRead(currentSensorActuator1);
+  // CRawMotor2 = analogRead(currentSensorActuator2);
   //float analogMotor1Calibrated = CRawMotor1 - Current1BaseValue;
-  float analogMotor1Calibrated = CRawMotor1 - 175;
-  float analogMotor2Calibrated = CRawMotor2 - 175;
-  float precision = 3.3 / 4096;
-  float voltPerAmp = .0375;
+  // float analogMotor1Calibrated = CRawMotor1 - 175;
+  // float analogMotor2Calibrated = CRawMotor2 - 175;
+  // float precision = 3.3 / 4096;
+  // float voltPerAmp = .0375;
 
-  ampOutM1 = ((analogMotor1Calibrated * precision) / voltPerAmp);
-  ampOutM2 = ((analogMotor2Calibrated * precision) / voltPerAmp);
-  if ((millis() - directionChangeTimer) >= 2000)
-  {
-    if (ampOutM1 > maxOutputedAmps)
-    {
-      maxOutputedAmps = ampOutM1;
-    }
-    if (ampOutM2 > maxOutputedAmps)
-    {
-      maxOutputedAmps = ampOutM2;
-    }
-  }
-  if (maxOutputedAmps > maxAmps)
-  {
-    jamState = true;
-  }
+  // ampOutM1 = ((analogMotor1Calibrated * precision) / voltPerAmp);
+  // ampOutM2 = ((analogMotor2Calibrated * precision) / voltPerAmp);
+  // if ((millis() - directionChangeTimer) >= 2000)
+  // {
+  //   if (ampOutM1 > maxOutputedAmps)
+  //   {
+  //     maxOutputedAmps = ampOutM1;
+  //   }
+  //   if (ampOutM2 > maxOutputedAmps)
+  //   {
+  //     maxOutputedAmps = ampOutM2;
+  //   }
+  // }
+  // if (maxOutputedAmps > maxAmps)
+  // {
+  //   jamState = true;
+  // }
 }
 
 void motorOut()
@@ -441,7 +429,7 @@ void motorOut()
 
   //tx motorSpeed maybe send a signal like 254 so that i know its full speed in up. because its not a possible setting
   motorDirection = "out";
-  directionChangeTimer = millis(); // used for amps may delete later
+  // directionChangeTimer = millis(); // used for amps may delete later
   analogWrite(PWMPinAMotor1, 255);
   analogWrite(PWMPinBMotor1, 0); //move motor
   analogWrite(PWMPinAMotor2, 255);
@@ -455,7 +443,7 @@ void motorIn() //could be simplified
 
   // tx motorSpeed
   motorDirection = "in";
-  directionChangeTimer = millis(); // used for amps may delete later
+  // directionChangeTimer = millis(); // used for amps may delete later
   analogWrite(PWMPinAMotor1, 0);
   analogWrite(PWMPinBMotor1, speed[speedSetting]); //move motor
   analogWrite(PWMPinAMotor2, 0);
@@ -541,6 +529,20 @@ int checkDebounceArray(int index)
 {
   return (millis() - debounceArray[index]);
 }
+
+// void lcdPrintError(String error)
+// {
+//   printDelayB = millis();
+//   if (printDelayB - printDelayA > 500)
+//   { // delay is used so board doesnt refresh too fast
+//     printDelayA = millis();
+//     lcd.clear();
+//     lcd.setCursor(0, 0);
+//     lcd.print(error);
+//     // lcd.setCursor(0, 1);
+//     // lcd.print("A=" );
+//   }
+// }
 
 // void calculateLoadSpeed()
 // {
