@@ -80,7 +80,6 @@ bool firstRun = true;
 bool fullyRetracted = false; //program logic
 bool motorStopState = true;
 
-
 long printDelayA = millis();
 long printDelayB = millis();
 int speedSetting = 3;
@@ -213,82 +212,43 @@ void drillFoam()
   // start normal foam drill cycle
 
   // turn on drills
-  int drillsStarted = 0;
-  int drillStartTime = millis();
+  startDrill();
+
+  // start motor in / down
   motorIn();
-  setDebounceArray(0);
-  // setDebounceArray(3);
-  while (!bottomState) //while down
-  {
-    //start drills 1 at a time
-    if (drillsStarted < 4 && millis() > (drillStartTime + 250 * drillsStarted))
-    {
-      startDrill(drillsStarted + 1);
-      drillsStarted++;
-    }
-    // if (millis() >= (checkDebounceArray(3) + 5) && digitalRead(HS2Test) == HIGH){
-    //   setDebounceArray(3);
-    //   CountTest++;
-    // }
-    // if (millis() >= (previousTime + 400))
-    // {
-    //   calculateLoadSpeed();
-    // }
-    if (checkDebounceArray(0) > 500)
-    {
-      checkRX();
-    }
 
-    readInputs();
-    if (pinchState)
-    {
-      //check our pinch and doors
-      //check for faulty amp reading
-      stopDrill();
-      motorOut();
-      delay(1000);
-      motorStop();
-      return; // exit down program
-    }
-    if (jamState)
-    {
-      motorOut();
-      delay(500);
-      motorStop();
-      return;
-    }
-    printLcd("Move In");
-  }
-  while(!motorStopState){ //bottom switch is pressed now continue down until motor stops.
-    printLcd("Transition");
-    readInputs();
-    checkRX();
-  }
-  jamState = false;
-  setDebounceArray(0);
-  drillStartTime = millis(); // used to set the timer used to count down till drills turn off
-                             // stopDrill();
+  // monitor in / down progress check for jams and when it reaches bottom also check for Pinch bar
+  watchMotorIn();
 
+  // bottom switch has been triggered
+
+  // wait for both motors to come to a stop. this will syncronize their position
+  while (!motorStopState)
+  {                         //bottom switch is pressed now continue down until motor stops.
+    printLcd("Transition"); // tell user we are in transistion phase
+    readInputs();           // check switch presses
+    checkRX();              // check communications with HS board to see if motors have both stopped
+  }
+  jamState = false; // jam likely triggered during transistion. ignore this jam message
+
+  // we are all the way to the bottom and have drilled all holes. Turn of the drills
+  stopDrill();
+
+  // begin moving motors out / up
   motorOut();
-  // delay(1000);
+
+  // watch motors to make sure they arive at correct top position (top switch or topReSync) also monitor for jams
+  watchMotorOut();
+} //end cutFoam
+
+void watchMotorOut()
+{
+  // check if it is returning to the top state or the sync at top
   while (!topState)
   {
+    readInputs(); // check physical switches
+    checkRX();    // check to see if both motors are running and check to see if jam
     printLcd("Move Out");
-    readInputs();
-    if (drillsOnState && millis() > (1000 + drillStartTime)) //turn drills off after 1 second delay
-    {
-      stopDrill();
-    }
-    // if (millis() >= (previousTime + 250))
-    // {
-    //   calculateLoadSpeed();
-
-    // }
-      if (checkDebounceArray(0) > 300)
-      {
-        checkRX();
-      }
-    
 
     if (jamState)
     {
@@ -299,7 +259,36 @@ void drillFoam()
     }
   }
   motorStop();
-} //end cutFoam
+}
+void watchMotorIn()
+{
+  while (!bottomState) //while down
+  {
+    readInputs(); // check physical switches
+    checkRX();    // check to see if both motors are running and check to see if jam
+    printLcd("Move In");
+    if (pinchState)
+    {
+      //check our pinch
+      stopDrill();
+      motorOut();
+      delay(1000);
+      motorStop();
+      delay(50);
+      checkRX();
+      jamState = false;
+      return; // exit down program
+    }
+    if (jamState)
+    {
+      motorOut();
+      delay(500);
+      motorStop();
+      //need to set resync motors on to move both motors to topmost position
+      return;
+    }
+  }
+}
 
 void printLcd(String funcName)
 {
@@ -449,8 +438,10 @@ void motorOut()
 {
   //write a smooth runup script
   // monitor sync
+
+  //tx motorSpeed maybe send a signal like 254 so that i know its full speed in up. because its not a possible setting
   motorDirection = "out";
-  directionChangeTimer = millis();
+  directionChangeTimer = millis(); // used for amps may delete later
   analogWrite(PWMPinAMotor1, 255);
   analogWrite(PWMPinBMotor1, 0); //move motor
   analogWrite(PWMPinAMotor2, 255);
@@ -461,8 +452,10 @@ void motorOut()
 void motorIn() //could be simplified
 {
   //write a smooth runup script
+
+  // tx motorSpeed
   motorDirection = "in";
-  directionChangeTimer = millis();
+  directionChangeTimer = millis(); // used for amps may delete later
   analogWrite(PWMPinAMotor1, 0);
   analogWrite(PWMPinBMotor1, speed[speedSetting]); //move motor
   analogWrite(PWMPinAMotor2, 0);
@@ -472,6 +465,7 @@ void motorIn() //could be simplified
 
 void motorStop()
 {
+  //check to see if motor1 and motor 2 did stop may need a small delay
   motorDirection = "none";
   analogWrite(PWMPinAMotor1, 0);
   analogWrite(PWMPinBMotor1, 0);
@@ -509,21 +503,10 @@ void stopDrill()
   digitalWrite(drill4, LOW);
 }
 
-void calculateLoadSpeed()
-{
-  float previousMotor1Speed = motor1Speed;
-  long tempTime = millis();
-  int tempPosition = positionMotor1;
-  float timeDelta = tempTime - previousTime;
-  float positionDelta = abs(tempPosition - previousPositionM1);
-  motor1Speed = positionDelta / timeDelta * 1000;
-  smoothedMotor1Speed = ((motor1Speed + previousMotor1Speed) / 2);
-  previousTime = tempTime;
-  previousPositionM1 = tempPosition;
-}
-
 void checkRX()
 {
+
+  //will need to differentiate motors?
   // char letter;
   int num = 100;
   if (Serial1.available())
@@ -549,18 +532,41 @@ void checkRX()
   }
 }
 
-void ISRMotor1()
+void setDebounceArray(int index)
 {
-  if (motorDirection == "out")
-  {
-    positionMotor1 = positionMotor1 + 1;
-  }
-  else if (motorDirection == "in")
-  {
-    positionMotor1 = positionMotor1 - 1;
-  }
+  debounceArray[index] = millis();
+}
 
-} //end Interrupt Service Routine (ISR)
+int checkDebounceArray(int index)
+{
+  return (millis() - debounceArray[index]);
+}
+
+// void calculateLoadSpeed()
+// {
+//   float previousMotor1Speed = motor1Speed;
+//   long tempTime = millis();
+//   int tempPosition = positionMotor1;
+//   float timeDelta = tempTime - previousTime;
+//   float positionDelta = abs(tempPosition - previousPositionM1);
+//   motor1Speed = positionDelta / timeDelta * 1000;
+//   smoothedMotor1Speed = ((motor1Speed + previousMotor1Speed) / 2);
+//   previousTime = tempTime;
+//   previousPositionM1 = tempPosition;
+// }
+
+// void ISRMotor1()
+// {
+//   if (motorDirection == "out")
+//   {
+//     positionMotor1 = positionMotor1 + 1;
+//   }
+//   else if (motorDirection == "in")
+//   {
+//     positionMotor1 = positionMotor1 - 1;
+//   }
+
+// } //end Interrupt Service Routine (ISR)
 
 // void ISRSpeed()
 // {
@@ -573,13 +579,3 @@ void ISRMotor1()
 //     speedSetting = 0;
 //   }
 // }
-
-void setDebounceArray(int index)
-{
-  debounceArray[index] = millis();
-}
-
-int checkDebounceArray(int index)
-{
-  return (millis() - debounceArray[index]);
-}
