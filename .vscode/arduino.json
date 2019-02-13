@@ -1,5 +1,6 @@
 {
-    "board": "arduino:sam:arduino_due_x_dbg",
+    "board": "arduino:avr:mega",
     "sketch": "CurrentSense.ino",
-    "port": "/dev/cu.usbmodem14111"
+    "port": "/dev/cu.usbmodem14311",
+    "configuration": "cpu=atmega2560"
 }

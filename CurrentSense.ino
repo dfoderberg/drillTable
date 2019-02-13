@@ -1,13 +1,12 @@
 /*
-  Code to monitor the current amp draw of the actuator, and to cut power if it
-  rises above a certain amount.
+  Drilling Machine for Icon Shear Connectors
 
-  Written by Progressive Automations
-  August 19th, 2015
+  Written by Davis Foderberg
+  2019
 
   Hardware:
   - RobotPower MegaMoto control boards
-  - Arduino Uno
+  - Arduino due
   - 2 pushbuttons
 */
 // #include <LiquidCrystal.h>
@@ -35,6 +34,7 @@ String motorDirection = "none";
 
 volatile int positionMotor1 = 0; //if the interrupt will change this value, it must be volatile
 float motor1Speed = 0;
+float smoothedMotor1Speed = 0;
 int previousPositionM1 = 0;
 int previousTime = 0;
 const int interuptM1 = 35;
@@ -44,6 +44,7 @@ const int startButton = 4;
 const int topSwitch = 30;
 const int bottomSwitch = 31;
 const int pinchSwitch = 32;
+// const int HS2Test = 51;
 
 bool topState = false;
 bool bottomState = false;
@@ -77,19 +78,26 @@ int countCurrentBase = 0;
 //bool dontExtend = false;
 bool firstRun = true;
 bool fullyRetracted = false; //program logic
+bool motorStopState = true;
+
 
 long printDelayA = millis();
 long printDelayB = millis();
 int speedSetting = 3;
 int speed[4] = {100, 150, 200, 255};
-int speedCalibration[4] = {200, 200, 200, 143};
-int deltaSpeedCalibration[4] = {12, 10, 10, 8};
+int speedCalibration[4] = {00, 00, 00, 0};
+int deltaSpeedCalibration[4] = {30, 30, 30, 8};
 
-long debounceArray[3] {0,0,0};
+int txCount = 0;
+int newRx = 10;
+
+long debounceArray[3]{0, 0, 0};
+// int CountTest = 0;
 
 void setup()
 {
   Serial.begin(9600);
+  Serial1.begin(9600);
 
   //pinMode(EnablePin, OUTPUT);
   pinMode(PWMPinAMotor1, OUTPUT);
@@ -100,7 +108,7 @@ void setup()
   pinMode(currentSensorActuator2, INPUT); //set feedback input
 
   pinMode(interuptM1, INPUT);
-  digitalWrite(interuptM1, HIGH);                                        //enable internal pullup resistor
+  digitalWrite(interuptM1, LOW);                                         //enable internal pullup resistor
   attachInterrupt(digitalPinToInterrupt(interuptM1), ISRMotor1, RISING); //Interrupt initialization
 
   pinMode(drill1, OUTPUT);
@@ -120,12 +128,14 @@ void setup()
   pinMode(bottomSwitch, INPUT);
   pinMode(topSwitch, INPUT);
   pinMode(pinchSwitch, INPUT);
+  // pinMode(HS2Test, INPUT);
 
+  // digitalWrite(HS2Test, HIGH);
   digitalWrite(startButton, HIGH); // enable internal pullups
   digitalWrite(bottomSwitch, HIGH);
   digitalWrite(topSwitch, HIGH);
   digitalWrite(pinchSwitch, HIGH);
-  analogReadResolution(12);
+  // analogReadResolution(12);
 
   // lcd.begin(16, 2); // initalize and set dimensions of lcd.
   lcd.init(); // initialize the lcd
@@ -142,6 +152,7 @@ void loop()
   // while (true){
   //   motorIn();
   // }
+  checkRX();
   if (jamState)
   {
     printLcd("JAM Clr > push S X3");
@@ -206,6 +217,7 @@ void drillFoam()
   int drillStartTime = millis();
   motorIn();
   setDebounceArray(0);
+  // setDebounceArray(3);
   while (!bottomState) //while down
   {
     //start drills 1 at a time
@@ -214,15 +226,20 @@ void drillFoam()
       startDrill(drillsStarted + 1);
       drillsStarted++;
     }
-    if (millis() >= (previousTime + 250))
+    // if (millis() >= (checkDebounceArray(3) + 5) && digitalRead(HS2Test) == HIGH){
+    //   setDebounceArray(3);
+    //   CountTest++;
+    // }
+    // if (millis() >= (previousTime + 400))
+    // {
+    //   calculateLoadSpeed();
+    // }
+    if (checkDebounceArray(0) > 500)
     {
-      calculateLoadSpeed();
-    }
-    if (checkDebounceArray(0) > 2000){
-    checkJam();
+      checkRX();
     }
 
-      readInputs();
+    readInputs();
     if (pinchState)
     {
       //check our pinch and doors
@@ -242,12 +259,18 @@ void drillFoam()
     }
     printLcd("Move In");
   }
+  while(!motorStopState){ //bottom switch is pressed now continue down until motor stops.
+    printLcd("Transition");
+    readInputs();
+    checkRX();
+  }
+  jamState = false;
   setDebounceArray(0);
   drillStartTime = millis(); // used to set the timer used to count down till drills turn off
                              // stopDrill();
 
   motorOut();
-  delay(1000);
+  // delay(1000);
   while (!topState)
   {
     printLcd("Move Out");
@@ -256,13 +279,17 @@ void drillFoam()
     {
       stopDrill();
     }
-    if (millis() >= (previousTime + 250))
-    {
-      calculateLoadSpeed();
-    }
-     if (checkDebounceArray(0) > 2000){
-    checkJam();
-    }
+    // if (millis() >= (previousTime + 250))
+    // {
+    //   calculateLoadSpeed();
+
+    // }
+      if (checkDebounceArray(0) > 300)
+      {
+        checkRX();
+      }
+    
+
     if (jamState)
     {
       motorIn();
@@ -287,13 +314,25 @@ void printLcd(String funcName)
     lcd.setCursor(0, 0);
     lcd.print(funcName);
     lcd.setCursor(0, 1);
-    lcd.print("A=");
-    lcd.setCursor(2, 1);
-    lcd.print(ampOutM1);
+    lcd.print("TX #");
+    lcd.setCursor(5, 1);
+    lcd.print(txCount);
     lcd.setCursor(8, 1);
-    lcd.print("A=");
-    lcd.setCursor(10, 1);
-    lcd.print(ampOutM2);
+    lcd.print("Stop");
+    lcd.setCursor(13, 1);
+    lcd.print(motorStopState);
+    lcd.setCursor(15, 1);
+    lcd.print("RX");
+    lcd.setCursor(18, 1);
+    lcd.print(newRx);
+    // lcd.setCursor(0, 1);
+    // lcd.print("A=");
+    // lcd.setCursor(2, 1);
+    // lcd.print(ampOutM1);
+    // lcd.setCursor(8, 1);
+    // lcd.print("A=");
+    // lcd.setCursor(10, 1);
+    // lcd.print(ampOutM2);
     lcd.setCursor(0, 2);
     lcd.print("T=");
     lcd.setCursor(2, 2);
@@ -311,13 +350,13 @@ void printLcd(String funcName)
     lcd.setCursor(17, 2);
     lcd.print(stateConverter(jamState));
     lcd.setCursor(0, 3);
-    lcd.print("HS # =");
-    lcd.setCursor(6, 3);
+    lcd.print("HS#=");
+    lcd.setCursor(4, 3);
     lcd.print(positionMotor1);
     lcd.setCursor(12, 3);
     // lcd.print((positionMotor1 - previousPositionM1));
-    lcd.print(motor1Speed);
-    lcd.setCursor(15,0);
+    lcd.print(smoothedMotor1Speed);
+    lcd.setCursor(15, 0);
     lcd.print(speedSetting);
     // lcd.setCursor(0, 3);
     // lcd.print("Max amps=");
@@ -363,16 +402,21 @@ void readInputs()
   else
     pinchState = true;
 
-if (digitalRead(!speedSwitch)){
-  if (speedSetting < 3)
+  if (checkDebounceArray(1) > 1000)
   {
-    speedSetting++;
+    if (digitalRead(speedSwitch) == LOW)
+    {
+      setDebounceArray(1);
+      if (speedSetting < 3)
+      {
+        speedSetting++;
+      }
+      else
+      {
+        speedSetting = 0;
+      }
+    }
   }
-  else
-  {
-    speedSetting = 0;
-  }
-}
 
   CRawMotor1 = analogRead(currentSensorActuator1);
   CRawMotor2 = analogRead(currentSensorActuator2);
@@ -467,24 +511,40 @@ void stopDrill()
 
 void calculateLoadSpeed()
 {
+  float previousMotor1Speed = motor1Speed;
   long tempTime = millis();
   int tempPosition = positionMotor1;
   float timeDelta = tempTime - previousTime;
   float positionDelta = abs(tempPosition - previousPositionM1);
   motor1Speed = positionDelta / timeDelta * 1000;
+  smoothedMotor1Speed = ((motor1Speed + previousMotor1Speed) / 2);
   previousTime = tempTime;
   previousPositionM1 = tempPosition;
 }
 
-void checkJam(){
-  if (motorDirection == "in"){
-  if (motor1Speed < speedCalibration[speedSetting] - deltaSpeedCalibration[speedSetting]){
+void checkRX()
+{
+  // char letter;
+  int num = 100;
+  if (Serial1.available())
+  {
+    txCount++;
+    num = Serial1.read();
+    newRx = num;
+    switch (num)
+    {
+    case 2:
       jamState = true;
-    }
-  }
-  else {
-     if (motor1Speed < speedCalibration[speedSetting] - (deltaSpeedCalibration[speedSetting]/2)){
-      jamState = true;
+      break;
+    case 0:
+      motorStopState = true;
+      break;
+    case 1:
+      motorStopState = false;
+      break;
+    default:
+
+      break;
     }
   }
 }
@@ -514,10 +574,12 @@ void ISRMotor1()
 //   }
 // }
 
-void setDebounceArray(int index){
+void setDebounceArray(int index)
+{
   debounceArray[index] = millis();
 }
 
-int checkDebounceArray(int index){
+int checkDebounceArray(int index)
+{
   return (millis() - debounceArray[index]);
 }
