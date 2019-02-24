@@ -6,8 +6,8 @@
 
   Hardware:
   - RobotPower MegaMoto control boards
-  - Arduino due
-  - 2 pushbuttons
+  - Arduino mega
+  
 */
 // #include <LiquidCrystal.h>
 #include <LiquidCrystal_I2C.h>
@@ -17,10 +17,10 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);
 // LiquidCrystal lcd(48, 49, 50, 51, 52, 53); //48 is RS   49 is E .   50 is DB4 - 53 is DB7
 
 //const int EnablePin = 8;
-const int PWMPinAMotor1 = 3;
+const int PWMPinAMotor1 = 5;  // actuator near buttons
 const int PWMPinBMotor1 = 11; // Motor 2 jumper pins Megamoto
 const int PWMPinAMotor2 = 10; //Motor 2 jumper pins Megamoto
-const int PWMPinBMotor2 = 9;
+const int PWMPinBMotor2 = 9;  //actuator far side
 
 // const int currentSensorActuator1 = A1; // motor feedback
 // const int currentSensorActuator2 = A0; // motor feedback
@@ -38,23 +38,34 @@ String motorDirection = "none";
 // int previousTime = 0;
 // const int interuptM1 = 35;
 
-volatile int speedSwitch = 41;
-const int startButton = 4;
-const int topSwitch = 30;
-const int bottomSwitch = 31;
-const int pinchSwitch = 32;
+volatile int speedSwitch = 27;
+const int startButton = 25;
+const int topSwitch = 28;
+const int syncTopSwitch = 26;
+const int bottomSwitch = 30;
+// const int pinchSwitch = 32;
+const int manualUp = 29;
+const int manualDown = 31;
+const int menuButton = 33;
 // const int HS2Test = 51;
 
 bool topState = false;
 bool bottomState = false;
-bool pinchState = false;
+// bool pinchState = false;
 bool safetyState = false;
 bool jamState = false;
+// bool manualState = false;
+bool manualUpState = false;
+bool manualDownState = false;
 
-const int drill1 = 22;
-const int drill2 = 23;
-const int drill3 = 24;
-const int drill4 = 25;
+int menuState = 0;
+bool readyToDrillState = true;
+bool manualModeState = false;
+
+// const int drill1 = 22;
+// const int drill2 = 23;
+// const int drill3 = 24;
+// const int drill4 = 25;
 bool drillsOnState = false;
 
 int hitLimits = 0;
@@ -83,20 +94,21 @@ bool motorStopState = true;
 long printDelayA = millis();
 long printDelayB = millis();
 int speedSetting = 3;
-int speed[4] = {100, 150, 200, 255};
-int speedCalibration[4] = {00, 00, 00, 0};
-int deltaSpeedCalibration[4] = {30, 30, 30, 8};
+int speed[5] = {75, 100, 150, 200, 255}; // was 100 150 200 255
+// int speedCalibration[4] = {0, 0, 0, 0};
+// int deltaSpeedCalibration[4] = {30, 30, 30, 8};
 
 int txCount = 0;
-int newRx = 10;
+char newRx = 'Z';
+char receivedChar = 'Z';
 
-long debounceArray[3]{0, 0, 0};
+long debounceArray[5]{0, 0, 0, 0, 0};
 // int CountTest = 0;
 
 void setup()
 {
   Serial.begin(9600);
-  Serial1.begin(9600);
+  Serial1.begin(57600);
 
   //pinMode(EnablePin, OUTPUT);
   pinMode(PWMPinAMotor1, OUTPUT);
@@ -110,14 +122,14 @@ void setup()
   // digitalWrite(interuptM1, LOW);                                         //enable internal pullup resistor
   // attachInterrupt(digitalPinToInterrupt(interuptM1), ISRMotor1, RISING); //Interrupt initialization
 
-  pinMode(drill1, OUTPUT);
-  pinMode(drill2, OUTPUT);
-  pinMode(drill3, OUTPUT);
-  pinMode(drill4, OUTPUT);
-  digitalWrite(drill1, LOW);
-  digitalWrite(drill2, LOW);
-  digitalWrite(drill3, LOW);
-  digitalWrite(drill4, LOW);
+  // pinMode(drill1, OUTPUT);
+  // pinMode(drill2, OUTPUT);
+  // pinMode(drill3, OUTPUT);
+  // pinMode(drill4, OUTPUT);
+  // digitalWrite(drill1, LOW);
+  // digitalWrite(drill2, LOW);
+  // digitalWrite(drill3, LOW);
+  // digitalWrite(drill4, LOW);
 
   pinMode(speedSwitch, INPUT);
   digitalWrite(speedSwitch, HIGH);
@@ -126,14 +138,20 @@ void setup()
   pinMode(startButton, INPUT);
   pinMode(bottomSwitch, INPUT);
   pinMode(topSwitch, INPUT);
-  pinMode(pinchSwitch, INPUT);
+  // pinMode(pinchSwitch, INPUT);
+  pinMode(manualUp, INPUT);
+  pinMode(manualDown, INPUT);
+  pinMode(menuButton, INPUT);
   // pinMode(HS2Test, INPUT);
 
   // digitalWrite(HS2Test, HIGH);
   digitalWrite(startButton, HIGH); // enable internal pullups
   digitalWrite(bottomSwitch, HIGH);
   digitalWrite(topSwitch, HIGH);
-  digitalWrite(pinchSwitch, HIGH);
+  // digitalWrite(pinchSwitch, HIGH);
+  digitalWrite(manualUp, HIGH);
+  digitalWrite(manualDown, HIGH);
+  digitalWrite(menuButton, HIGH);
   // analogReadResolution(12);
 
   // lcd.begin(16, 2); // initalize and set dimensions of lcd.
@@ -148,63 +166,77 @@ void setup()
 
 void loop()
 {
-  // while (true){
-  //   motorIn();
-  // }
-  checkRX();
+
+  checkRX();    // check to see if other board sent any messages
+  readInputs(); // read all switch inputs
+  checkMenuButton();
   if (jamState)
   {
     printLcd("JAM Clr > push S X3");
     int a = 0;
     while (a <= 3)
     {
-      if (digitalRead(startButton) == LOW)
+      while (digitalRead(startButton) != LOW)
       {
-        delay(100);
-        a++;
+        //stuck till button press
       }
+      while (digitalRead(startButton) != HIGH)
+      {
+        // stuck till button release
+      }
+      delay(10); // short delay
+      a++;       // count up 1
+      // if (digitalRead(startButton) == LOW)
+      // {
+      //   delay(100);
+      //   a++;
+      // }
     }
-    jamState = false;
-    // maxOutputedAmps = 1;
+    jamState = false; //exit a jam state
   }
 
-  printLcd("begin");
-  readInputs();
-  if (pinchState)
+  if (manualModeState)
   {
-    //do not start anything
-    // display which switches are holding it up
+    runManualMode();
   }
-  else
+
+  // if (pinchState)
+  // {
+  //   //do not start anything
+  //   // display which switches are holding it up
+  // }
+  // else
+  // {
+  // printManualLcd();
+  printLcd("Ready to Drill");                   //loop wait for input
+  if (digitalRead(startButton) == LOW) // if someone presses start button.
   {
-    printLcd("Ready");                   //loop wait for input
-    if (digitalRead(startButton) == LOW) // if someone presses start button.
+    // Serial.println("start pressed");
+    if (!topState) // check if in home position. If not home return to home.
     {
-      // Serial.println("start pressed");
-      if (!topState) // check if in home position. If not home return to home.
+      motorOut();
+      while (!topState)
       {
-        motorOut();
-        while (!topState)
+        checkRX();
+        printLcd("Return Home");
+        readInputs();
+        if (jamState)
         {
-          printLcd("Return Home");
-          readInputs();
-          if (jamState)
-          {
-            motorIn();
-            delay(500);
-            motorStop();
-            return;
-          }
+          motorIn();
+          delay(500);
+          motorStop();
+          return;
         }
-        motorStop();
-      }    // end if
-      else // everything is ready start drilling.
-      {
-        drillFoam(); //runs standard opperation
-      }              // end else
+      }
+      motorStop();
+    }    // end if
+    else // everything is ready start drilling.
+    {
+      drillFoam(); //runs standard opperation
+    }              // end else
 
-    } // end if start is pressed
-  }
+  } // end if start is pressed
+  // }
 } //end main loop
 
 void drillFoam()
@@ -221,15 +253,20 @@ void drillFoam()
   watchMotorIn();
 
   // bottom switch has been triggered
-
+  if (jamState)
+    return;
   // wait for both motors to come to a stop. this will syncronize their position
   while (!motorStopState)
-  {                         //bottom switch is pressed now continue down until motor stops.
+  { //bottom switch is pressed now continue down until motor stops.
+
+    //need to monitor for pinch!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     printLcd("Transition"); // tell user we are in transistion phase
     readInputs();           // check switch presses
     checkRX();              // check communications with HS board to see if motors have both stopped
     //create a function to see if both motors stop. use this function in stopMotor as well
   }
+  delay(200);
   jamState = false; // jam likely triggered during transistion. ignore this jam message
 
   // we are all the way to the bottom and have drilled all holes. Turn of the drills
@@ -249,7 +286,7 @@ void watchMotorOut()
   {
     readInputs(); // check physical switches
     checkRX();    // check to see if both motors are running and check to see if jam
-    printLcd("Move Out");
+    printLcd("Return to Unload");
 
     if (jamState)
     {
@@ -261,33 +298,90 @@ void watchMotorOut()
   }
   motorStop();
 }
-void watchMotorIn()
+void watchMotorIn() // return does not bring you out of the drill function maybe need to return a value if it errors
 {
   while (!bottomState) //while down
   {
     readInputs(); // check physical switches
     checkRX();    // check to see if both motors are running and check to see if jam
-    printLcd("Move In");
-    if (pinchState)
-    {
-      //check our pinch
-      stopDrill();
-      motorOut();
-      delay(1000);
-      motorStop();
-      delay(50);
-      checkRX();
-      jamState = false;
-      return; // exit down program
-    }
+    printLcd("Drilling");
+    // if (pinchState)
+    // {
+    //   //check our pinch
+    //   stopDrill();
+    //   motorOut();
+    //   delay(1000);
+    //   motorStop();
+    //   delay(50);
+    //   checkRX();
+    //   jamState = false;
+    //   return; // exit down program
+    // }
     if (jamState)
     {
       motorOut();
-      delay(500);
+      delay(1000);
       motorStop();
       //need to set resync motors on to move both motors to topmost position
       return;
     }
+  }
+}
+
+void runManualMode()
+{
+  while (manualModeState)
+  {
+    checkMenuButton();
+    readInputs();
+    printManualLcd();
+    if (manualDownState)
+    {
+      motorIn();
+    }
+    else if (manualUpState)
+    {
+      motorOut();
+    }
+    else
+    {
+      motorStop();
+    }
+  }
+  motorStop();
+}
+void checkMenuButton()
+{
+
+  if (checkDebounceArray(3) > 1000)
+  {
+
+    if (digitalRead(menuButton) == LOW)
+    {
+      setDebounceArray(3);
+      menuState++;
+    }
+  }
+  int num = (menuState % 2);
+  switch (num)
+  {
+  case 0:
+    readyToDrillState = true;
+    manualModeState = false;
+    //mode for check opperations
+    break;
+  case 1:
+    readyToDrillState = false;
+    manualModeState = true;
+    break;
+  // case 2:
+  //   motorStopState = false;
+  //   break;
+  default:
+    readyToDrillState = true;
+    manualModeState = false;
+    menuState = 0;
+    break;
   }
 }
 
@@ -296,13 +390,64 @@ void printLcd(String funcName)
 
   //Serial.println("funcName");
   printDelayB = millis();
-  if (printDelayB - printDelayA > 500)
+  if (printDelayB - printDelayA > 250)
   { // delay is used so board doesnt refresh too fast
     printDelayA = millis();
 
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print(funcName);
+    lcd.setCursor(0, 1);
+    lcd.print("Speed Setting = ");
+    lcd.setCursor(16, 1);
+    lcd.print(speedSetting);
+    // lcd.setCursor(0, 2);
+    // lcd.print("T=");
+    // lcd.setCursor(2, 2);
+    // lcd.print(stateConverter(topState));
+    // lcd.setCursor(5, 2);
+    // lcd.print("B=");
+    // lcd.setCursor(7, 2);
+    // lcd.print(stateConverter(bottomState));
+    // lcd.setCursor(10, 2);
+    // lcd.print("P=");
+    // lcd.setCursor(12, 2);
+    // lcd.print(stateConverter(pinchState));
+    if (jamState)
+    {
+      lcd.setCursor(0, 2);
+      lcd.print("Jammed Clear Machine");
+      // lcd.setCursor(17, 2);
+      // lcd.print(stateConverter(jamState));
+    }
+
+    // lcd.setCursor(0, 3);
+    // lcd.print("HS#=");
+    // lcd.setCursor(4, 3);
+    // lcd.print(positionMotor1);
+    // lcd.setCursor(12, 3);
+    // // lcd.print((positionMotor1 - previousPositionM1));
+    // lcd.print(smoothedMotor1Speed);
+
+    // lcd.setCursor(0, 3);
+    // lcd.print("Max amps=");
+    // lcd.setCursor(10, 3);
+    // lcd.print(maxOutputedAmps);
+  }
+}
+
+void printManualLcd()
+{
+
+  //Serial.println("funcName");
+  printDelayB = millis();
+  if (printDelayB - printDelayA > 250)
+  { // delay is used so board doesnt refresh too fast
+    printDelayA = millis();
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Manual Mode");
     lcd.setCursor(15, 0);
     lcd.print(speedSetting);
     lcd.setCursor(0, 1);
@@ -313,10 +458,10 @@ void printLcd(String funcName)
     lcd.print("Stop");
     lcd.setCursor(13, 1);
     lcd.print(motorStopState);
-    lcd.setCursor(15, 1);
-    lcd.print("RX");
-    lcd.setCursor(18, 1);
-    lcd.print(newRx);
+    // lcd.setCursor(0, 3);
+    // lcd.print("RX");
+    // lcd.setCursor(5, 3);
+    // lcd.print(newRx);
     // lcd.setCursor(0, 1);
     // lcd.print("A=");
     // lcd.setCursor(2, 1);
@@ -333,14 +478,31 @@ void printLcd(String funcName)
     lcd.print("B=");
     lcd.setCursor(7, 2);
     lcd.print(stateConverter(bottomState));
-    lcd.setCursor(10, 2);
-    lcd.print("P=");
-    lcd.setCursor(12, 2);
-    lcd.print(stateConverter(pinchState));
+    // lcd.setCursor(10, 2);
+    // lcd.print("P=");
+    // lcd.setCursor(12, 2);
+    // lcd.print(stateConverter(pinchState));
     lcd.setCursor(15, 2);
     lcd.print("J=");
     lcd.setCursor(17, 2);
     lcd.print(stateConverter(jamState));
+    lcd.setCursor(0, 3);
+    lcd.print("U=");
+    lcd.setCursor(2, 3);
+    lcd.print(stateConverter(manualUpState));
+    lcd.setCursor(5, 3);
+    lcd.print("D=");
+    lcd.setCursor(7, 3);
+    lcd.print(stateConverter(manualDownState));
+    lcd.setCursor(10, 3);
+    lcd.print("M=");
+    lcd.setCursor(12, 3);
+    lcd.print(menuState);
+    lcd.setCursor(15, 3);
+    lcd.print("m=");
+    lcd.setCursor(17, 3);
+    lcd.print(stateConverter(manualModeState));
+
     // lcd.setCursor(0, 3);
     // lcd.print("HS#=");
     // lcd.setCursor(4, 3);
@@ -374,17 +536,26 @@ void readInputs()
     bottomState = false;
   else
     bottomState = true;
-  if (digitalRead(pinchSwitch))
-    pinchState = false;
+  // if (digitalRead(pinchSwitch))
+  //   pinchState = false;
+  // else
+  //   pinchState = true;
+
+  if (digitalRead(manualUp))
+    manualUpState = false;
   else
-    pinchState = true;
+    manualUpState = true;
+  if (digitalRead(manualDown))
+    manualDownState = false;
+  else
+    manualDownState = true;
 
   if (checkDebounceArray(1) > 1000)
   {
     if (digitalRead(speedSwitch) == LOW)
     {
       setDebounceArray(1);
-      if (speedSetting < 3)
+      if (speedSetting < 4)
       {
         speedSetting++;
       }
@@ -462,62 +633,54 @@ void motorStop()
 
 } //end stopMotor
 
-void startDrill(int drillNumber)
+void startDrill()
 {
   drillsOnState = true;
-  switch (drillNumber)
-  {
-  case 1:
-    digitalWrite(drill1, HIGH);
-    break;
-  case 2:
-    digitalWrite(drill2, HIGH);
-    break;
-  case 3:
-    digitalWrite(drill3, HIGH);
-    break;
-  case 4:
-    digitalWrite(drill4, HIGH);
-    break;
-  }
 }
 
 void stopDrill()
 {
   drillsOnState = false;
-  digitalWrite(drill1, LOW);
-  digitalWrite(drill2, LOW);
-  digitalWrite(drill3, LOW);
-  digitalWrite(drill4, LOW);
 }
 
 void checkRX()
 {
-
-  //will need to differentiate motors?
-  // char letter;
-  int num = 100;
-  if (Serial1.available())
+  if (Serial1.available() > 0)
   {
-    txCount++;
-    num = Serial1.read();
-    newRx = num;
-    switch (num)
+    receivedChar = Serial1.read();
+    newRx = receivedChar;
+    if (receivedChar == 'J')
     {
-    case 2:
       jamState = true;
-      break;
-    case 0:
+    }
+    else if (receivedChar == 's')
+    {
       motorStopState = true;
-      break;
-    case 1:
+    }
+    else if (receivedChar == 'm')
+    {
       motorStopState = false;
-      break;
-    default:
-
-      break;
     }
   }
+  // txCount++;
+  // num = Serial1.read();
+  // newRx = num;
+  // switch (num)
+  // {
+  // case 2:
+  //   jamState = true;
+  //   break;
+  // case 0:
+  //   motorStopState = true;
+  //   break;
+  // case 1:
+  //   motorStopState = false;
+  //   break;
+  // default:
+
+  //   break;
+  // }
+  // }
 }
 
 void setDebounceArray(int index)
@@ -525,7 +688,7 @@ void setDebounceArray(int index)
   debounceArray[index] = millis();
 }
 
-int checkDebounceArray(int index)
+long checkDebounceArray(int index)
 {
   return (millis() - debounceArray[index]);
 }
