@@ -1,3 +1,11 @@
 {
-    "git.ignoreLimitWarning": true
+    "git.ignoreLimitWarning": true,
+    "files.associations": {
+        "__bit_reference": "cpp",
+        "algorithm": "cpp",
+        "ios": "cpp",
+        "memory": "cpp",
+        "string": "cpp",
+        "type_traits": "cpp"
+    }
 }

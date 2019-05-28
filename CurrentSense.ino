@@ -80,11 +80,11 @@ int debounceTime = 300;   //amount to debounce
 long lastButtonpress = 0; // timer for debouncing
 long currentTimedebounce = 0;
 
-int CRawMotor1 = 0; // raw analog input value
-int CRawMotor2 = 0;
+// int CRawMotor1 = 0; // raw analog input value
+// int CRawMotor2 = 0;
 
-int Current1BaseValue = 0; // allows you to calibrate current sensor
-int countCurrentBase = 0;
+// int Current1BaseValue = 0; // allows you to calibrate current sensor
+// int countCurrentBase = 0;
 
 //bool dontExtend = false;
 bool firstRun = true;
@@ -93,7 +93,7 @@ bool motorStopState = true;
 
 long printDelayA = millis();
 long printDelayB = millis();
-int speedSetting = 3;
+int speedSetting = 4;
 int speed[5] = {75, 100, 150, 200, 255}; // was 100 150 200 255
 // int speedCalibration[4] = {0, 0, 0, 0};
 // int deltaSpeedCalibration[4] = {30, 30, 30, 8};
@@ -172,70 +172,61 @@ void loop()
   checkMenuButton();
   if (jamState)
   {
-    printLcd("JAM Clr > push S X3");
-    int a = 0;
-    while (a <= 3)
-    {
-      while (digitalRead(startButton) != LOW)
-      {
-        //stuck till button press
-      }
-      while (digitalRead(startButton) != HIGH)
-      {
-        // stuck till button release
-      }
-      delay(10); // short delay
-      a++;       // count up 1
-      // if (digitalRead(startButton) == LOW)
-      // {
-      //   delay(100);
-      //   a++;
-      // }
-    }
-    jamState = false; //exit a jam state
+    clearJam(); // tells user to clear jam and then press start 3 times
   }
 
   if (manualModeState)
   {
-    runManualMode();
+    runManualMode(); // run manual opperation code.
   }
 
-  // if (pinchState)
-  // {
-  //   //do not start anything
-  //   // display which switches are holding it up
-  // }
-  // else
-  // {
-  // printManualLcd();
-  printLcd("Ready to Drill");                   //loop wait for input
-  if (digitalRead(startButton) == LOW) // if someone presses start button.
+  if (!topState)
   {
-    // Serial.println("start pressed");
-    if (!topState) // check if in home position. If not home return to home.
+    printLcd("Press Start to Return To Home");
+    if (digitalRead(startButton) == LOW)
     {
-      motorOut();
-      while (!topState)
-      {
-        checkRX();
-        printLcd("Return Home");
-        readInputs();
-        if (jamState)
-        {
-          motorIn();
-          delay(500);
-          motorStop();
-          return;
-        }
-      }
-      motorStop();
-    }    // end if
-    else // everything is ready start drilling.
+      returnHome();
+    }
+  }
+  else // if at Home
+  {
+    printLcd("Ready to Drill");
+    if (digitalRead(startButton) == LOW)
     {
       drillFoam(); //runs standard opperation
-    }              // end else
+    }
+  }
 
-  } // end if start is pressed
+  // printLcd("Ready to Drill");          //loop wait for input
+  // if (digitalRead(startButton) == LOW) // if someone presses start button.
+  // {
+  //   // Serial.println("start pressed");
+
+  //   //this needs to be made its own function
+  //   if (!topState) // check if in home position. If not home return to home.
+  //   {
+  //     motorOut();
+  //     while (!topState)
+  //     {
+  //       checkRX();
+  //       printLcd("Return Home");
+  //       readInputs();
+  //       if (jamState)
+  //       {
+  //         motorIn();
+  //         delay(500);
+  //         motorStop();
+  //         return;
+  //       }
+  //     }
+  //     motorStop();
+  //   }    // end if
+  //   else // everything is ready start drilling.
+  //   {
+  //     drillFoam(); //runs standard opperation
+  //   }              // end else
+
+  // } // end if start is pressed
   // }
 } //end main loop
 
@@ -330,12 +321,12 @@ void watchMotorIn() // return does not bring you out of the drill function maybe
 
 void runManualMode()
 {
-  while (manualModeState)
+  while (manualModeState) // the turn key is in manual position.
   {
-    checkMenuButton();
-    readInputs();
-    printManualLcd();
-    if (manualDownState)
+    checkMenuButton(); // will be replaced when turn key is added to readinputs
+    readInputs();  // check on the state of the machine
+    printManualLcd();  // print out screen will be updated
+    if (manualDownState) // 
     {
       motorIn();
     }
@@ -348,7 +339,7 @@ void runManualMode()
       motorStop();
     }
   }
-  motorStop();
+  motorStop();  // stop motor if manual state is left.` 
 }
 void checkMenuButton()
 {
@@ -448,16 +439,30 @@ void printManualLcd()
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Manual Mode");
-    lcd.setCursor(15, 0);
+    if (manualUpState)
+    {
+      lcd.setCursor(0, 1);
+      lcd.print("Move UP");
+    }
+    else if (manualDownState)
+    {
+      lcd.setCursor(0, 1);
+      lcd.print("Move DOWN");
+    }
+    lcd.setCursor(0, 2);
+    lcd.print("Speed Setting = ");
+    lcd.setCursor(16, 2);
     lcd.print(speedSetting);
-    lcd.setCursor(0, 1);
-    lcd.print("TX #");
-    lcd.setCursor(5, 1);
-    lcd.print(txCount);
-    lcd.setCursor(8, 1);
-    lcd.print("Stop");
-    lcd.setCursor(13, 1);
-    lcd.print(motorStopState);
+    // lcd.setCursor(15, 0);
+    // lcd.print(speedSetting);
+    // lcd.setCursor(0, 1);
+    // lcd.print("TX #");
+    // lcd.setCursor(5, 1);
+    // lcd.print(txCount);
+    // lcd.setCursor(8, 1);
+    // lcd.print("Stop");
+    // lcd.setCursor(13, 1);
+    // lcd.print(motorStopState);
     // lcd.setCursor(0, 3);
     // lcd.print("RX");
     // lcd.setCursor(5, 3);
@@ -470,38 +475,38 @@ void printManualLcd()
     // lcd.print("A=");
     // lcd.setCursor(10, 1);
     // lcd.print(ampOutM2);
-    lcd.setCursor(0, 2);
-    lcd.print("T=");
-    lcd.setCursor(2, 2);
-    lcd.print(stateConverter(topState));
-    lcd.setCursor(5, 2);
-    lcd.print("B=");
-    lcd.setCursor(7, 2);
-    lcd.print(stateConverter(bottomState));
+    // lcd.setCursor(0, 2);
+    // lcd.print("T=");
+    // lcd.setCursor(2, 2);
+    // lcd.print(stateConverter(topState));
+    // lcd.setCursor(5, 2);
+    // lcd.print("B=");
+    // lcd.setCursor(7, 2);
+    // lcd.print(stateConverter(bottomState));
     // lcd.setCursor(10, 2);
     // lcd.print("P=");
     // lcd.setCursor(12, 2);
     // lcd.print(stateConverter(pinchState));
-    lcd.setCursor(15, 2);
-    lcd.print("J=");
-    lcd.setCursor(17, 2);
-    lcd.print(stateConverter(jamState));
-    lcd.setCursor(0, 3);
-    lcd.print("U=");
-    lcd.setCursor(2, 3);
-    lcd.print(stateConverter(manualUpState));
-    lcd.setCursor(5, 3);
-    lcd.print("D=");
-    lcd.setCursor(7, 3);
-    lcd.print(stateConverter(manualDownState));
-    lcd.setCursor(10, 3);
-    lcd.print("M=");
-    lcd.setCursor(12, 3);
-    lcd.print(menuState);
-    lcd.setCursor(15, 3);
-    lcd.print("m=");
-    lcd.setCursor(17, 3);
-    lcd.print(stateConverter(manualModeState));
+    // lcd.setCursor(15, 2);
+    // lcd.print("J=");
+    // lcd.setCursor(17, 2);
+    // lcd.print(stateConverter(jamState));
+    // lcd.setCursor(0, 3);
+    // lcd.print("U=");
+    // lcd.setCursor(2, 3);
+    // lcd.print(stateConverter(manualUpState));
+    // lcd.setCursor(5, 3);
+    // lcd.print("D=");
+    // lcd.setCursor(7, 3);
+    // lcd.print(stateConverter(manualDownState));
+    // lcd.setCursor(10, 3);
+    // lcd.print("M=");
+    // lcd.setCursor(12, 3);
+    // lcd.print(menuState);
+    // lcd.setCursor(15, 3);
+    // lcd.print("m=");
+    // lcd.setCursor(17, 3);
+    // lcd.print(stateConverter(manualModeState));
 
     // lcd.setCursor(0, 3);
     // lcd.print("HS#=");
@@ -600,6 +605,9 @@ void motorOut()
 
   //tx motorSpeed maybe send a signal like 254 so that i know its full speed in up. because its not a possible setting
   motorDirection = "out";
+  Serial1.write("<O");
+  Serial1.write("4");
+  Serial1.write(">");
   // directionChangeTimer = millis(); // used for amps may delete later
   analogWrite(PWMPinAMotor1, 255);
   analogWrite(PWMPinBMotor1, 0); //move motor
@@ -614,6 +622,9 @@ void motorIn() //could be simplified
 
   // tx motorSpeed
   motorDirection = "in";
+  Serial1.write("<I");
+  Serial1.write(speedSetting);
+  Serial1.write(">");
   // directionChangeTimer = millis(); // used for amps may delete later
   analogWrite(PWMPinAMotor1, 0);
   analogWrite(PWMPinBMotor1, speed[speedSetting]); //move motor
@@ -626,12 +637,62 @@ void motorStop()
 {
   //check to see if motor1 and motor 2 did stop may need a small delay
   motorDirection = "none";
+  Serial1.write("<S>");
   analogWrite(PWMPinAMotor1, 0);
   analogWrite(PWMPinBMotor1, 0);
   analogWrite(PWMPinAMotor2, 0);
   analogWrite(PWMPinBMotor2, 0);
 
 } //end stopMotor
+
+void clearJam()
+{
+  printLcd("JAM Clr > push S 3X");
+  //print clear jam function with instructions to clear machine then press start 3X
+  int a = 0;
+  while (a <= 3)
+  {
+    while (digitalRead(startButton) != LOW)
+    {
+      //stuck till button press
+    }
+    while (digitalRead(startButton) != HIGH)
+    {
+      // stuck till button release
+    }
+    delay(10); // short delay
+    a++;       // count up 1
+    // if (digitalRead(startButton) == LOW)
+    // {
+    //   delay(100);
+    //   a++;
+    // }
+  }
+  jamState = false; //exit a jam state
+}
+
+void returnHome()
+{
+  motorOut();
+  while (!topState)
+  {
+    if(digitalRead(syncTopSwitch) == LOW){  //check to see if motor triggered the top switch. if it does i could wait for both motors to stop or just use a delay.
+      delay(1000);
+      motorIn();
+    }
+    checkRX();
+    printLcd("Return Home");
+    readInputs();
+    if (jamState)
+    {
+      motorIn();
+      delay(500);
+      motorStop();
+      return;
+    }
+  }
+  motorStop();
+}
 
 void startDrill()
 {
@@ -653,11 +714,11 @@ void checkRX()
     {
       jamState = true;
     }
-    else if (receivedChar == 's')
+    else if (receivedChar == 's')  // motor stopped
     {
       motorStopState = true;
     }
-    else if (receivedChar == 'm')
+    else if (receivedChar == 'm')  // motor moving
     {
       motorStopState = false;
     }
