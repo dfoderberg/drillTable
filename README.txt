@@ -3,10 +3,13 @@ cmd option R to verify
 cmd shift P then arduino to go to menu
 must select board and serial port to upload
 
+calibrate all the speed settings
+recieve which speed setting is coming across
 
 add in switch for manual state
 add in h bridge for both motors
 add davis's special menu switch
+add direction to motor in and motor out function and serial communication
 change all strings to c strings == https://hackingmajenkoblog.wordpress.com/2016/02/04/the-evils-of-arduino-strings/
 
 calculate jam speeds for all settings
@@ -34,3 +37,7 @@ LCD Tutorial - http://theelectromania.blogspot.com/2016/01/clock-and-calendar-us
 Serial Commuication Tutorial - https://learn.sparkfun.com/tutorials/serial-communication/all
 
 Serial Communication Part 2 - https://forum.arduino.cc/index.php?topic=396450
+
+
+Parts 20x4 i2c display Amazon- https://www.amazon.com/JANSANE-Arduino-Display-Interface-Raspberry/dp/B07D7ZQVDR/ref=sr_1_5?keywords=20x4+i2c&qid=1559062736&s=gateway&sr=8-5
+

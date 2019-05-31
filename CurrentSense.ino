@@ -22,6 +22,8 @@ const int PWMPinBMotor1 = 11; // Motor 2 jumper pins Megamoto
 const int PWMPinAMotor2 = 10; //Motor 2 jumper pins Megamoto
 const int PWMPinBMotor2 = 9;  //actuator far side
 
+const int DrillPin = 53;
+
 // const int currentSensorActuator1 = A1; // motor feedback
 // const int currentSensorActuator2 = A0; // motor feedback
 // float ampOutM1;
@@ -115,6 +117,9 @@ void setup()
   pinMode(PWMPinBMotor1, OUTPUT); //Set motor outputs
   pinMode(PWMPinAMotor2, OUTPUT);
   pinMode(PWMPinBMotor2, OUTPUT); //Set motor outputs
+
+  pinMode(DrillPin, OUTPUT);
+  digitalWrite(DrillPin, HIGH);
   // pinMode(currentSensorActuator1, INPUT); //set feedback input
   // pinMode(currentSensorActuator2, INPUT); //set feedback input
 
@@ -250,18 +255,17 @@ void drillFoam()
   while (!motorStopState)
   { //bottom switch is pressed now continue down until motor stops.
 
-    //need to monitor for pinch!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
     printLcd("Transition"); // tell user we are in transistion phase
     readInputs();           // check switch presses
     checkRX();              // check communications with HS board to see if motors have both stopped
     //create a function to see if both motors stop. use this function in stopMotor as well
   }
-  delay(200);
-  jamState = false; // jam likely triggered during transistion. ignore this jam message
 
   // we are all the way to the bottom and have drilled all holes. Turn of the drills
   stopDrill();
+
+  checkRX();
+  jamState = false; // jam likely triggered during transistion. ignore this jam message
 
   // begin moving motors out / up
   motorOut();
@@ -296,18 +300,7 @@ void watchMotorIn() // return does not bring you out of the drill function maybe
     readInputs(); // check physical switches
     checkRX();    // check to see if both motors are running and check to see if jam
     printLcd("Drilling");
-    // if (pinchState)
-    // {
-    //   //check our pinch
-    //   stopDrill();
-    //   motorOut();
-    //   delay(1000);
-    //   motorStop();
-    //   delay(50);
-    //   checkRX();
-    //   jamState = false;
-    //   return; // exit down program
-    // }
+
     if (jamState)
     {
       motorOut();
@@ -323,10 +316,10 @@ void runManualMode()
 {
   while (manualModeState) // the turn key is in manual position.
   {
-    checkMenuButton(); // will be replaced when turn key is added to readinputs
-    readInputs();  // check on the state of the machine
-    printManualLcd();  // print out screen will be updated
-    if (manualDownState) // 
+    checkMenuButton();   // will be replaced when turn key is added to readinputs
+    readInputs();        // check on the state of the machine
+    printManualLcd();    // print out screen will be updated
+    if (manualDownState) //
     {
       motorIn();
     }
@@ -339,7 +332,7 @@ void runManualMode()
       motorStop();
     }
   }
-  motorStop();  // stop motor if manual state is left.` 
+  motorStop(); // stop motor if manual state is left.`
 }
 void checkMenuButton()
 {
@@ -605,7 +598,8 @@ void motorOut()
 
   //tx motorSpeed maybe send a signal like 254 so that i know its full speed in up. because its not a possible setting
   motorDirection = "out";
-  Serial1.write("<O");
+  // Serial1.write("<O");
+  Serial1.write("<"); // not doing direction yet.
   Serial1.write("4");
   Serial1.write(">");
   // directionChangeTimer = millis(); // used for amps may delete later
@@ -622,7 +616,8 @@ void motorIn() //could be simplified
 
   // tx motorSpeed
   motorDirection = "in";
-  Serial1.write("<I");
+  // Serial1.write("<I");
+  Serial1.write("<"); // not doing direction yet
   Serial1.write(speedSetting);
   Serial1.write(">");
   // directionChangeTimer = millis(); // used for amps may delete later
@@ -676,7 +671,8 @@ void returnHome()
   motorOut();
   while (!topState)
   {
-    if(digitalRead(syncTopSwitch) == LOW){  //check to see if motor triggered the top switch. if it does i could wait for both motors to stop or just use a delay.
+    if (digitalRead(syncTopSwitch) == LOW)
+    { //check to see if motor triggered the top switch. if it does i could wait for both motors to stop or just use a delay.
       delay(1000);
       motorIn();
     }
@@ -696,11 +692,13 @@ void returnHome()
 
 void startDrill()
 {
+  digitalWrite(DrillPin, LOW);
   drillsOnState = true;
 }
 
 void stopDrill()
 {
+  digitalWrite(DrillPin, HIGH);
   drillsOnState = false;
 }
 
@@ -714,11 +712,11 @@ void checkRX()
     {
       jamState = true;
     }
-    else if (receivedChar == 's')  // motor stopped
+    else if (receivedChar == 's') // motor stopped
     {
       motorStopState = true;
     }
-    else if (receivedChar == 'm')  // motor moving
+    else if (receivedChar == 'm') // motor moving
     {
       motorStopState = false;
     }
